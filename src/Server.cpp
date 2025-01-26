@@ -21,9 +21,17 @@ int main(int argc, char *argv[]) {
 
   std::string command = argv[2];
   if (command == ".dbinfo") {
-    std::cout << "database page size: " << db.getPageSize() << std::endl;
-  }
+    SqliteHeader db_header = db.readHeader();
+    std::cout << "database page size: " << db_header.page_size << std::endl;
 
+    size_t num_tables = db.countTables();
+
+    std::cout << "Number of tables: " << num_tables << std::endl;
+
+  } else if (command == ".tables") {
+    size_t num_tables = db.countTables();
+
+    std::cout << "Number of tables: " << num_tables << std::endl;
+  }
   return 0;
 }
-
