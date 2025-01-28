@@ -1,136 +1,111 @@
 #pragma once
-
-#include "byte_reader.h"
-#include <memory>
+#include "btree_cell.h"
+#include "debug.h"
+#include "file_reader.h"
+#include <concepts>
+#include <cstdint>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
-enum class PageType : uint8_t {
-  INTERIOR_INDEX = 0x02,
-  INTERIOR_TABLE = 0x05,
-  LEAF_INDEX = 0x0a,
-  LEAF_TABLE = 0x0d
-};
-
-// Base interfaces
-class BTreeCell {
+template <PageType T> class BTreePage {
 public:
-  virtual ~BTreeCell() = default;
-  virtual size_t getSize() const = 0;
-};
+  using Cell = typename BTreeCell<T>::Data;
 
-class BTreePage {
-public:
-  virtual ~BTreePage() = default;
-  virtual std::vector<std::unique_ptr<BTreeCell>> getCells() = 0;
-  virtual bool isLeaf() const = 0;
-  virtual bool isTable() const = 0;
-};
+  struct Header {
+    static constexpr PageType type = T;
+    uint16_t first_freeblock{};
+    uint16_t cell_count{};
+    uint16_t cell_content_start{};
+    uint8_t fragmented_free_bytes{};
+    std::conditional_t<PageTraits<T>::is_interior, uint32_t, std::monostate>
+        right_most_pointer{};
+  };
 
-// Concrete cell implementations
-class TableLeafCell : public BTreeCell {
-public:
-  TableLeafCell(ByteReader &reader);
-  size_t getSize() const override;
-
-  int64_t rowId;
-  std::vector<uint8_t> payload;
-  uint32_t overflowPage;
-};
-
-class TableInteriorCell : public BTreeCell {
-public:
-  TableInteriorCell(ByteReader &reader);
-  size_t getSize() const override;
-
-  uint32_t leftChildPage;
-  int64_t key;
-};
-
-class IndexLeafCell : public BTreeCell {
-public:
-  IndexLeafCell(ByteReader &reader);
-  size_t getSize() const override;
-
-  std::vector<uint8_t> key;
-  uint32_t overflowPage;
-};
-
-class IndexInteriorCell : public BTreeCell {
-public:
-  IndexInteriorCell(ByteReader &reader);
-  size_t getSize() const override;
-
-  uint32_t leftChildPage;
-  std::vector<uint8_t> key;
-  uint32_t overflowPage;
-};
-
-template <typename CellType> class BTreePageImpl : public BTreePage {
-public:
-  // B-tree page header offsets as per SQLite format spec
-  static constexpr uint16_t OFFSET_CELL_COUNT = 3;
-  static constexpr uint16_t OFFSET_CELL_CONTENT = 5;
-  static constexpr uint16_t HEADER_SIZE = 8; // For leaf pages
-  //
-  explicit BTreePageImpl(std::vector<uint8_t> data) : reader_(data) {
-    // Read page header
-    PageType pageType = static_cast<PageType>(reader_.readU8());
-    uint16_t cellPointerOffset = HEADER_SIZE; // Header size for leaf pages
-
-    // Read number of cells
-    reader_.seek(OFFSET_CELL_COUNT);
-    cellCount_ = reader_.readU16();
-
-    // Read cell content area offset
-    reader_.seek(OFFSET_CELL_CONTENT);
-    uint16_t cellContentOffset = reader_.readU16();
-    if (cellContentOffset == 0)
-      cellContentOffset = std::numeric_limits<uint16_t>::max();
-
-    // Read cell pointers
-    std::vector<uint16_t> cellPointers(cellCount_);
-    reader_.seek(cellPointerOffset);
-    for (uint16_t i = 0; i < cellCount_; i++) {
-      cellPointers[i] = reader_.readU16();
-    }
-
-    // Create cells by reading from their offsets
-    cells_.reserve(cellCount_);
-    for (uint16_t offset : cellPointers) {
-      reader_.seek(offset);
-      cells_.push_back(std::make_unique<CellType>(reader_));
-    }
+  explicit BTreePage(FileReader &reader, uint16_t page_size)
+      : reader_(reader), page_size_(page_size) {
+    LOG_INFO("Creating BTreePage with page size: " << page_size);
+    parseHeader();
+    readCellPointers();
   }
 
-  std::vector<std::unique_ptr<BTreeCell>> getCells() override {
-    std::vector<std::unique_ptr<BTreeCell>> result;
-    result.reserve(cells_.size());
-    for (auto &cell : cells_) {
-      result.push_back(std::move(cell));
-    }
-    return result;
+  [[nodiscard]] auto getHeader() const noexcept -> const Header & {
+    LOG_DEBUG("Accessing page header");
+    return header_;
   }
 
-  bool isLeaf() const override {
-    return static_cast<PageType>(reader_.getData()[0]) ==
-               PageType::LEAF_TABLE ||
-           static_cast<PageType>(reader_.getData()[0]) == PageType::LEAF_INDEX;
+  [[nodiscard]] auto getCells() const noexcept -> const std::vector<Cell> & {
+    LOG_DEBUG("Accessing cells, count: " << cells_.size());
+    return cells_;
   }
 
-  bool isTable() const override {
-    return static_cast<PageType>(reader_.getData()[0]) ==
-               PageType::LEAF_TABLE ||
-           static_cast<PageType>(reader_.getData()[0]) ==
-               PageType::INTERIOR_TABLE;
+  static constexpr auto isLeaf() noexcept -> bool {
+    return PageTraits<T>::is_leaf;
+  }
+
+  static constexpr auto isInterior() noexcept -> bool {
+    return PageTraits<T>::is_interior;
   }
 
 private:
-  ByteReader reader_;
-  uint16_t cellCount_;
-  std::vector<std::unique_ptr<CellType>> cells_;
+  void parseHeader() {
+    LOG_DEBUG("Parsing page header at position: " << reader_.position());
+
+    uint8_t type_byte = reader_.readU8();
+    if (static_cast<PageType>(type_byte) != T) {
+      LOG_ERROR("Page type mismatch. Expected: "
+                << static_cast<int>(T)
+                << ", Got: " << static_cast<int>(type_byte));
+      throw std::runtime_error("Page type mismatch");
+    }
+
+    header_.first_freeblock = reader_.readU16();
+    header_.cell_count = reader_.readU16();
+    header_.cell_content_start = reader_.readU16();
+    header_.fragmented_free_bytes = reader_.readU8();
+
+    LOG_INFO("Page header parsed: cells=" << header_.cell_count
+                                          << ", content_start="
+                                          << header_.cell_content_start);
+
+    if constexpr (PageTraits<T>::is_interior) {
+      header_.right_most_pointer = reader_.readU32();
+      LOG_DEBUG(
+          "Interior page right_most_pointer: " << header_.right_most_pointer);
+    }
+  }
+
+  void readCellPointers() {
+    LOG_DEBUG("Reading cell pointers, count: " << header_.cell_count);
+
+    std::vector<uint16_t> cell_pointers;
+    cell_pointers.reserve(header_.cell_count);
+
+    for (uint16_t i = 0; i < header_.cell_count; ++i) {
+      auto pointer = reader_.readU16();
+      LOG_DEBUG("Cell pointer " << i << " at offset: " << pointer);
+      cell_pointers.push_back(pointer);
+    }
+
+    cells_.reserve(header_.cell_count);
+    for (auto pointer : cell_pointers) {
+      LOG_DEBUG("Seeking to cell at offset: " << pointer);
+      reader_.seek(pointer);
+      readCell();
+    }
+
+    LOG_INFO("Read " << cells_.size() << " cells successfully");
+  }
+
+  void readCell() {
+    LOG_DEBUG("Reading cell at position: " << reader_.position());
+    BTreeCell<T> cell_reader(reader_);
+    cells_.push_back(cell_reader.read());
+  }
+
+  FileReader &reader_;
+  const uint32_t page_size_;
+  Header header_{};
+  std::vector<Cell> cells_{};
 };
 
-using TableLeafPage = BTreePageImpl<TableLeafCell>;
-using TableInteriorPage = BTreePageImpl<TableInteriorCell>;
-using IndexLeafPage = BTreePageImpl<IndexLeafCell>;
-using IndexInteriorPage = BTreePageImpl<IndexInteriorCell>;

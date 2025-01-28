@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+
 // Define debug level
 #define LOG_LEVEL_NONE 0
 #define LOG_LEVEL_ERROR 1
@@ -7,7 +9,7 @@
 #define LOG_LEVEL_DEBUG 3
 
 // Set current log level - change this to control logging
-#define CURRENT_LOG_LEVEL LOG_LEVEL_INFO
+#define CURRENT_LOG_LEVEL LOG_LEVEL_NONE
 
 // Logging macros
 #if CURRENT_LOG_LEVEL >= LOG_LEVEL_DEBUG

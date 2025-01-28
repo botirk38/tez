@@ -1,6 +1,7 @@
 #pragma once
 #include "file_reader.h"
 #include <string>
+#include <vector>
 
 struct SqliteHeader {
   std::string header_string;     // 16 bytes
@@ -32,8 +33,8 @@ public:
   explicit Database(const std::string &filename);
 
   SqliteHeader readHeader();
-  bool isOpen() const { return reader.isOpen(); }
-  size_t countTables();
+  uint16_t getTableCount();
+  bool isTableRecord(const std::vector<uint8_t> &payload);
 
 private:
   FileReader reader;
