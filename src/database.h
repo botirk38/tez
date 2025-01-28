@@ -1,5 +1,7 @@
 #pragma once
 #include "file_reader.h"
+#include "schema_record.h"
+#include <stdatomic.h>
 #include <string>
 #include <vector>
 
@@ -35,6 +37,8 @@ public:
   SqliteHeader readHeader();
   uint16_t getTableCount();
   bool isTableRecord(const std::vector<uint8_t> &payload);
+  bool isUserTable(const SchemaRecord &record);
+  std::vector<std::string> getTableNames();
 
 private:
   FileReader reader;

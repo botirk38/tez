@@ -25,6 +25,13 @@ int main(int argc, char *argv[]) {
     std::cout << "number of tables: " << num_tables << std::endl;
 
   } else if (command == ".tables") {
+
+    std::vector<std::string> table_names = db.getTableNames();
+
+    for (const std::string &name : table_names) {
+      std::cout << name << " ";
+    }
+    std::cout << std::endl;
   }
   return 0;
 }

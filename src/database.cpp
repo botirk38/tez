@@ -1,6 +1,7 @@
 #include "database.h"
 #include "btree_page.h"
 #include "btree_record.h"
+#include "sqlite_constants.h"
 
 Database::Database(const std::string &filename) : reader(filename) {
   LOG_INFO("Opening database file: " << filename);
@@ -65,11 +66,10 @@ SqliteHeader Database::readHeader() {
 
 uint16_t Database::getTableCount() {
   LOG_INFO("Counting tables in database");
-  constexpr size_t HEADER_SIZE = 100;
   uint16_t table_count = 0;
 
   LOG_DEBUG("Seeking to schema page at offset " << HEADER_SIZE);
-  reader.seek(HEADER_SIZE);
+  reader.seek(sqlite::HEADER_SIZE);
 
   // Create a B-tree page for the schema
   LOG_DEBUG("Creating B-tree page for schema with page size "
@@ -115,4 +115,36 @@ bool Database::isTableRecord(const std::vector<uint8_t> &payload) {
   LOG_DEBUG("Record type: " << type);
 
   return type == "table";
+}
+
+std::vector<std::string> Database::getTableNames() {
+  LOG_INFO("Getting table names from database");
+  std::vector<std::string> table_names;
+
+  // Seek to start of first page + header size
+  reader.seek((sqlite::SCHEMA_PAGE - 1) * header.page_size +
+              sqlite::HEADER_SIZE);
+
+  BTreePage<PageType::LeafTable> schema_page(reader, header.page_size);
+
+  LOG_DEBUG("Processing " << schema_page.getCells().size()
+                          << " schema records");
+
+  for (const auto &cell : schema_page.getCells()) {
+    BTreeRecord record(cell.payload);
+    SchemaRecord schema = SchemaRecord::fromRecord(record);
+
+    if (isUserTable(schema)) {
+      LOG_DEBUG("Found user table: " << schema.tbl_name);
+      table_names.push_back(schema.tbl_name);
+    }
+  }
+
+  LOG_INFO("Found " << table_names.size() << " user tables");
+  return table_names;
+}
+
+bool Database::isUserTable(const SchemaRecord &record) {
+  // Check if it's a table and not an internal table
+  return record.type == "table" && record.name.compare(0, 7, "sqlite_") != 0;
 }
