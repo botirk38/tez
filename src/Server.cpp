@@ -2,6 +2,22 @@
 #include <cstdint>
 #include <iostream>
 
+void printResults(const QueryResult &results) {
+  for (const auto &row : results) {
+    for (size_t i = 0; i < row.size(); i++) {
+      if (i > 0)
+        std::cout << "|";
+
+      if (std::holds_alternative<std::string>(row[i])) {
+        std::cout << std::get<std::string>(row[i]);
+      } else if (std::holds_alternative<int64_t>(row[i])) {
+        std::cout << std::get<int64_t>(row[i]);
+      }
+    }
+    std::cout << "\n";
+  }
+}
+
 int main(int argc, char *argv[]) {
   // Set stdout and stderr to flush immediately
   std::cout << std::unitbuf;
@@ -31,17 +47,7 @@ int main(int argc, char *argv[]) {
     SQLParser parser;
     auto select_stmt = parser.parseSelect(command);
     QueryResult results = db.executeSelect(*select_stmt);
-
-    for (const auto &row : results) {
-      for (const auto &value : row) {
-        if (std::holds_alternative<std::string>(value)) {
-          std::cout << std::get<std::string>(value);
-        } else if (std::holds_alternative<int64_t>(value)) {
-          std::cout << std::get<int64_t>(value);
-        }
-        std::cout << "\n";
-      }
-    }
+    printResults(results);
   }
 
   return 0;

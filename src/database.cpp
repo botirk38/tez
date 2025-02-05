@@ -170,22 +170,23 @@ bool Database::isUserTable(const SchemaRecord &record) {
   return record.type == "table" && record.name.compare(0, 7, "sqlite_") != 0;
 }
 
-QueryResult Database::executeSelect(const SelectStatement &stmt) {
-  QueryResult results;
-
-  // Get table schema first
-  SchemaRecord schema;
+SchemaRecord Database::getTableSchema(const std::string &table_name) {
   BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
                                              sqlite::SCHEMA_PAGE);
 
   for (const auto &cell : schema_page.getCells()) {
     BTreeRecord record(cell.payload);
-    auto temp_schema = SchemaRecord::fromRecord(record);
-    if (temp_schema.name == stmt.table_name) {
-      schema = temp_schema;
-      break;
+    auto schema = SchemaRecord::fromRecord(record);
+    if (schema.name == table_name) {
+      return schema;
     }
   }
+  throw std::runtime_error("Table not found: " + table_name);
+}
+
+QueryResult Database::executeSelect(const SelectStatement &stmt) {
+  QueryResult results;
+  SchemaRecord schema = getTableSchema(stmt.table_name);
 
   if (stmt.is_count_star) {
     Row count_row;
@@ -195,11 +196,9 @@ QueryResult Database::executeSelect(const SelectStatement &stmt) {
     return results;
   }
 
-  // Get the root page for the table
   uint32_t root_page = getTableRootPage(stmt.table_name);
   BTreePage<PageType::LeafTable> page(_reader, _header.page_size, root_page);
 
-  // Create mapping of requested columns to their positions
   std::vector<int> column_positions;
   for (const auto &col_name : stmt.column_names) {
     for (const auto &col_info : schema.columns) {
@@ -210,7 +209,6 @@ QueryResult Database::executeSelect(const SelectStatement &stmt) {
     }
   }
 
-  // Process each row
   for (const auto &cell : page.getCells()) {
     BTreeRecord record(cell.payload);
     const auto &values = record.getValues();

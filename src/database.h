@@ -54,4 +54,5 @@ private:
 
   uint32_t getTableRowCount(const std::string &table_name);
   uint32_t countLeafPageCells(uint32_t page_num);
+  SchemaRecord getTableSchema(const std::string &table_name);
 };
