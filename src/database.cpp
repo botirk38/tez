@@ -144,6 +144,12 @@ std::vector<std::string> Database::getTableNames() {
   return table_names;
 }
 
+uint32_t Database::getTableRowCount(const std::string &table_name) {
+  uint32_t root_page = getTableRootPage(table_name);
+  BTreePage<PageType::LeafTable> page(_reader, _header.page_size, root_page);
+  return page.getHeader().cell_count;
+}
+
 uint32_t Database::getTableRootPage(const std::string &table_name) {
   BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
                                              sqlite::SCHEMA_PAGE);
@@ -164,34 +170,59 @@ bool Database::isUserTable(const SchemaRecord &record) {
   return record.type == "table" && record.name.compare(0, 7, "sqlite_") != 0;
 }
 
-uint32_t Database::executeSelect(const SelectStatement &stmt) {
+QueryResult Database::executeSelect(const SelectStatement &stmt) {
+  QueryResult results;
 
-  if (stmt.is_count_star) {
-    LOG_DEBUG("STMT is count\n");
-    auto count = getTableRowCount(stmt.table_name);
-    return count;
+  // Get table schema first
+  SchemaRecord schema;
+  BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
+                                             sqlite::SCHEMA_PAGE);
+
+  for (const auto &cell : schema_page.getCells()) {
+    BTreeRecord record(cell.payload);
+    auto temp_schema = SchemaRecord::fromRecord(record);
+    if (temp_schema.name == stmt.table_name) {
+      schema = temp_schema;
+      break;
+    }
   }
 
-  return -1;
-}
-
-uint32_t Database::getTableRowCount(const std::string &table_name) {
+  if (stmt.is_count_star) {
+    Row count_row;
+    count_row.push_back(
+        static_cast<int64_t>(getTableRowCount(stmt.table_name)));
+    results.push_back(count_row);
+    return results;
+  }
 
   // Get the root page for the table
-  uint32_t root_page = getTableRootPage(table_name);
-
-  LOG_DEBUG("Root Page:" << root_page << '\n');
-
-  // Read the btree page
-  LOG_DEBUG("Page Size: " << _header.page_size << '\n');
+  uint32_t root_page = getTableRootPage(stmt.table_name);
   BTreePage<PageType::LeafTable> page(_reader, _header.page_size, root_page);
 
-  // Return the number of cells (rows) in the page
-  auto _header = page.getHeader();
+  // Create mapping of requested columns to their positions
+  std::vector<int> column_positions;
+  for (const auto &col_name : stmt.column_names) {
+    for (const auto &col_info : schema.columns) {
+      if (col_info.name == col_name) {
+        column_positions.push_back(col_info.position);
+        break;
+      }
+    }
+  }
 
-  auto cell_count = _header.cell_count;
+  // Process each row
+  for (const auto &cell : page.getCells()) {
+    BTreeRecord record(cell.payload);
+    const auto &values = record.getValues();
 
-  LOG_DEBUG("Cell Count: " << cell_count);
+    Row row;
+    for (int pos : column_positions) {
+      if (pos < values.size()) {
+        row.push_back(values[pos]);
+      }
+    }
+    results.push_back(row);
+  }
 
-  return cell_count;
+  return results;
 }

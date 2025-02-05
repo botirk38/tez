@@ -32,6 +32,9 @@ struct SqliteHeader {
   uint32_t sqlite_version;       // 4 bytes
 };
 
+using Row = std::vector<RecordValue>;
+using QueryResult = std::vector<Row>;
+
 class Database {
 public:
   explicit Database(const std::string &filename);
@@ -43,7 +46,7 @@ public:
   std::vector<std::string> getTableNames();
   uint32_t getTableRootPage(const std::string &table_name);
 
-  uint32_t executeSelect(const SelectStatement &stmt);
+  QueryResult executeSelect(const SelectStatement &stmt);
 
 private:
   FileReader _reader;
