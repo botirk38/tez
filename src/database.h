@@ -1,6 +1,8 @@
 #pragma once
 #include "file_reader.h"
+#include "lexer.h"
 #include "schema_record.h"
+#include <cstdint>
 #include <stdatomic.h>
 #include <string>
 #include <vector>
@@ -39,8 +41,14 @@ public:
   bool isTableRecord(const std::vector<uint8_t> &payload);
   bool isUserTable(const SchemaRecord &record);
   std::vector<std::string> getTableNames();
+  uint32_t getTableRootPage(const std::string &table_name);
+
+  uint32_t executeSelect(const SelectStatement &stmt);
 
 private:
-  FileReader reader;
-  SqliteHeader header;
+  FileReader _reader;
+  SqliteHeader _header;
+
+  uint32_t getTableRowCount(const std::string &table_name);
+  uint32_t countLeafPageCells(uint32_t page_num);
 };

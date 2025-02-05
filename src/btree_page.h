@@ -22,8 +22,9 @@ public:
         right_most_pointer{};
   };
 
-  explicit BTreePage(FileReader &reader, uint16_t page_size)
-      : reader_(reader), page_size_(page_size) {
+  explicit BTreePage(FileReader &reader, uint16_t page_size,
+                     uint32_t page_number)
+      : reader_(reader), page_size_(page_size), page_number_(page_number) {
     LOG_INFO("Creating BTreePage with page size: " << page_size);
     parseHeader();
     readCellPointers();
@@ -49,6 +50,9 @@ public:
 
 private:
   void parseHeader() {
+
+    reader_.seekToPage(page_number_, page_size_);
+
     LOG_DEBUG("Parsing page header at position: " << reader_.position());
 
     uint8_t type_byte = reader_.readU8();
@@ -80,6 +84,7 @@ private:
 
     std::vector<uint16_t> cell_pointers;
     cell_pointers.reserve(header_.cell_count);
+    const uint32_t page_start = (page_number_ - 1) * page_size_;
 
     for (uint16_t i = 0; i < header_.cell_count; ++i) {
       auto pointer = reader_.readU16();
@@ -90,7 +95,7 @@ private:
     cells_.reserve(header_.cell_count);
     for (auto pointer : cell_pointers) {
       LOG_DEBUG("Seeking to cell at offset: " << pointer);
-      reader_.seek(pointer);
+      reader_.seek(page_start + pointer);
       readCell();
     }
 
@@ -99,13 +104,13 @@ private:
 
   void readCell() {
     LOG_DEBUG("Reading cell at position: " << reader_.position());
-    BTreeCell<T> cell_reader(reader_);
+    BTreeCell<T> cell_reader(reader_, page_size_);
     cells_.push_back(cell_reader.read());
   }
 
   FileReader &reader_;
-  const uint32_t page_size_;
+  const uint16_t page_size_;
   Header header_{};
   std::vector<Cell> cells_{};
+  uint32_t page_number_;
 };
-

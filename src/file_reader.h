@@ -1,4 +1,5 @@
 #pragma once
+#include "sqlite_constants.h"
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -79,11 +80,31 @@ public:
   // Position management
   void seek(size_t pos) { file_.seekg(pos); }
 
+  void seekRelative(std::streamoff offset) {
+    file_.seekg(offset, std::ios::cur);
+  }
+
   [[nodiscard]] auto position() const -> size_t {
     return static_cast<size_t>(file_.tellg());
   }
 
+  void seekToPage(uint32_t page_number, uint16_t page_size) {
+    uint32_t page_offset = (page_number - 1) * page_size;
+
+    if (page_number == 1) {
+      seek(page_offset + sqlite::HEADER_SIZE);
+    } else {
+      seek(page_offset);
+    }
+  }
+
   [[nodiscard]] auto size() const -> size_t { return size_; }
+  [[nodiscard]] uint8_t peekU8() {
+    auto current_pos = position();
+    uint8_t value = readU8();
+    seek(current_pos);
+    return value;
+  }
 
 private:
   // Endianness conversion helpers
@@ -106,4 +127,3 @@ private:
   mutable std::ifstream file_;
   size_t size_;
 };
-
