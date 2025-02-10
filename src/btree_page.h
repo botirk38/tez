@@ -25,7 +25,7 @@ public:
   explicit BTreePage(FileReader &reader, uint16_t page_size,
                      uint32_t page_number)
       : reader_(reader), page_size_(page_size), page_number_(page_number) {
-    LOG_INFO("Creating BTreePage with page size: " << page_size);
+    LOG_DEBUG("Creating BTreePage with page size: " << page_size);
     parseHeader();
     readCellPointers();
   }
@@ -68,9 +68,9 @@ private:
     header_.cell_content_start = reader_.readU16();
     header_.fragmented_free_bytes = reader_.readU8();
 
-    LOG_INFO("Page header parsed: cells=" << header_.cell_count
-                                          << ", content_start="
-                                          << header_.cell_content_start);
+    LOG_DEBUG("Page header parsed: cells=" << header_.cell_count
+                                           << ", content_start="
+                                           << header_.cell_content_start);
 
     if constexpr (PageTraits<T>::is_interior) {
       header_.right_most_pointer = reader_.readU32();
@@ -99,7 +99,7 @@ private:
       readCell();
     }
 
-    LOG_INFO("Read " << cells_.size() << " cells successfully");
+    LOG_DEBUG("Read " << cells_.size() << " celDEBUGuccessfully");
   }
 
   void readCell() {

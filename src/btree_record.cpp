@@ -41,7 +41,7 @@ void BTreeRecord::parseHeader() {
       types_.push_back(static_cast<SerialType>(serial_type));
     }
   }
-  LOG_INFO("Parsed " << types_.size() << " column types");
+  LOG_DEBUG("Parsed " << types_.size() << " column types");
 }
 
 void BTreeRecord::parseValues() {
@@ -53,49 +53,42 @@ void BTreeRecord::parseValues() {
                                     << (reader_.position() - start_pos)
                                     << " bytes");
   }
-  LOG_INFO("Successfully parsed " << values_.size() << " values");
+  LOG_DEBUG("Successfully parsed " << values_.size() << " values");
 }
 
 RecordValue BTreeRecord::readValue(SerialType type) {
   switch (type) {
   case SerialType::Null:
-    LOG_DEBUG("Reading NULL value");
     return std::monostate{};
   case SerialType::Int8:
-    LOG_DEBUG("Reading Int8 value");
     return static_cast<int64_t>(reader_.readU8());
   case SerialType::Int16:
-    LOG_DEBUG("Reading Int16 value");
     return static_cast<int64_t>(reader_.readU16());
+  case SerialType::Int24:
+    return static_cast<int64_t>(reader_.read24());
   case SerialType::Int32:
-    LOG_DEBUG("Reading Int32 value");
     return static_cast<int64_t>(reader_.readU32());
+  case SerialType::Int48:
+    return static_cast<int64_t>(reader_.read48());
   case SerialType::Int64:
-    LOG_DEBUG("Reading Int64 value");
     return static_cast<int64_t>(reader_.readU64());
   case SerialType::Float64:
-    LOG_DEBUG("Reading Float64 value");
     return reader_.readDouble();
   case SerialType::Zero:
-    LOG_DEBUG("Reading Zero value");
     return static_cast<int64_t>(0);
   case SerialType::One:
-    LOG_DEBUG("Reading One value");
     return static_cast<int64_t>(1);
   default:
     if (static_cast<int>(type) >= 12) {
       if (static_cast<int>(type) % 2 == 0) {
         size_t size = (static_cast<int>(type) - 12) / 2;
-        LOG_DEBUG("Reading BLOB of size: " << size);
         return reader_.readBytes(size);
       } else {
         size_t size = (static_cast<int>(type) - 13) / 2;
-        LOG_DEBUG("Reading String of size: " << size);
         auto bytes = reader_.readBytes(size);
         return std::string(bytes.begin(), bytes.end());
       }
     }
-    LOG_ERROR("Unknown serial type: " << static_cast<int>(type));
     throw std::runtime_error("Unknown serial type");
   }
 }

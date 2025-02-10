@@ -81,4 +81,17 @@ private:
                            const std::vector<int> &column_positions,
                            int where_col_pos, const WhereClause &where,
                            QueryResult &results);
+
+  int64_t getIndexRootPage(const std::string &table_name,
+                           const std::string &column_name);
+  std::vector<uint64_t> scanIndex(uint32_t index_root_page,
+                                  const std::string &search_value);
+  void traverseIndexBTree(uint32_t page_num, const std::string &search_value,
+                          std::vector<uint64_t> &rowids);
+  QueryResult fetchRowsByIds(const std::string &table_name,
+                             const std::vector<uint64_t> &rowids,
+                             const std::vector<std::string> &columns);
+  void findRowInBTree(uint32_t page_num, uint64_t target_rowid,
+                      const std::vector<int> &column_positions,
+                      QueryResult &results);
 };

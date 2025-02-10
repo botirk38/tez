@@ -141,6 +141,25 @@ public:
     return {value, bytes};
   }
 
+  uint64_t read24() {
+    uint64_t value = 0;
+    value |= static_cast<uint64_t>(readU8()) << 16;
+    value |= static_cast<uint64_t>(readU8()) << 8;
+    value |= readU8();
+    return value;
+  }
+
+  uint64_t read48() {
+    uint64_t value = 0;
+    value |= static_cast<uint64_t>(readU8()) << 40;
+    value |= static_cast<uint64_t>(readU8()) << 32;
+    value |= static_cast<uint64_t>(readU8()) << 24;
+    value |= static_cast<uint64_t>(readU8()) << 16;
+    value |= static_cast<uint64_t>(readU8()) << 8;
+    value |= readU8();
+    return value;
+  }
+
   // Position management
   void seek(size_t pos) { pos_ = pos; }
   size_t position() const { return pos_; }

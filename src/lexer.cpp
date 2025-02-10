@@ -135,6 +135,9 @@ Token Lexer::nextToken() {
   if (matchKeyword("KEY", TokenType::Key)) {
     return Token(TokenType::Key);
   }
+  if (matchKeyword("AUTOINCREMENT", TokenType::Identifier)) {
+    return Token(TokenType::Identifier, "autoincrement");
+  }
 
   return readIdentifier();
 }
