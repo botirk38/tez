@@ -538,29 +538,42 @@ void Database::findRowInBTree(uint32_t page_num, uint64_t target_rowid,
   _reader.seekToPage(page_num, _header.page_size);
 
   if (static_cast<PageType>(page_type) == PageType::InteriorTable) {
+    LOG_INFO("Processing interior table page");
     BTreePage<PageType::InteriorTable> page(_reader, _header.page_size,
                                             page_num);
     const auto &cells = page.getCells();
 
-    // Find the appropriate child page to follow
-    uint32_t child_page = page.getHeader().right_most_pointer;
+    // Check if target is in first child
+    if (target_rowid < cells[0].interior_row_id) {
+      findRowInBTree(cells[0].left_pointer, target_rowid, column_positions,
+                     results);
+      return;
+    }
 
-    for (size_t i = 0; i < cells.size(); i++) {
-      if (target_rowid < cells[i].interior_row_id) {
-        child_page = cells[i].left_pointer;
-        break;
+    // Check intermediate children
+    for (size_t i = 0; i < cells.size() - 1; i++) {
+      if (target_rowid >= cells[i].interior_row_id &&
+          target_rowid < cells[i + 1].interior_row_id) {
+        findRowInBTree(cells[i + 1].left_pointer, target_rowid,
+                       column_positions, results);
+        return;
       }
     }
 
-    findRowInBTree(child_page, target_rowid, column_positions, results);
+    // Must be in last child or rightmost pointer
+    if (target_rowid >= cells.back().interior_row_id) {
+      findRowInBTree(page.getHeader().right_most_pointer, target_rowid,
+                     column_positions, results);
+    } else {
+      findRowInBTree(cells.back().left_pointer, target_rowid, column_positions,
+                     results);
+    }
   } else {
     BTreePage<PageType::LeafTable> page(_reader, _header.page_size, page_num);
-
     for (const auto &cell : page.getCells()) {
       if (cell.row_id == target_rowid) {
         BTreeRecord record(cell.payload);
         const auto &values = record.getValues();
-
         Row row;
         for (int pos : column_positions) {
           if (pos == -1) {
