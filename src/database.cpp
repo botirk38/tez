@@ -1,7 +1,6 @@
 #include "database.h"
 #include "btree_page.h"
 #include "btree_record.h"
-#include "lexer.h"
 #include "sqlite_constants.h"
 #include <cstdint>
 
@@ -185,29 +184,30 @@ SchemaRecord Database::getTableSchema(const std::string &table_name) {
 }
 
 QueryResult Database::executeSelect(const SelectStatement &stmt) {
-  QueryResult results;
-  SchemaRecord schema = getTableSchema(stmt.table_name);
-
   if (stmt.is_count_star) {
-    Row count_row;
-    count_row.push_back(
-        static_cast<int64_t>(getTableRowCount(stmt.table_name)));
-    results.push_back(count_row);
-    return results;
+    return executeCountStar(stmt.table_name);
   }
 
+  return stmt.where_clause ? executeSelectWithWhere(stmt)
+                           : executeSelectWithoutWhere(stmt);
+}
+
+QueryResult Database::executeCountStar(const std::string &table_name) {
+  QueryResult results;
+  Row count_row;
+  count_row.push_back(static_cast<int64_t>(getTableRowCount(table_name)));
+  results.push_back(count_row);
+  return results;
+}
+
+QueryResult Database::executeSelectWithoutWhere(const SelectStatement &stmt) {
+  QueryResult results;
+  SchemaRecord schema = getTableSchema(stmt.table_name);
   uint32_t root_page = getTableRootPage(stmt.table_name);
   BTreePage<PageType::LeafTable> page(_reader, _header.page_size, root_page);
 
-  std::vector<int> column_positions;
-  for (const auto &col_name : stmt.column_names) {
-    for (const auto &col_info : schema.columns) {
-      if (col_info.name == col_name) {
-        column_positions.push_back(col_info.position);
-        break;
-      }
-    }
-  }
+  std::vector<int> column_positions =
+      mapColumnPositions(stmt.column_names, schema);
 
   for (const auto &cell : page.getCells()) {
     BTreeRecord record(cell.payload);
@@ -223,4 +223,79 @@ QueryResult Database::executeSelect(const SelectStatement &stmt) {
   }
 
   return results;
+}
+
+QueryResult Database::executeSelectWithWhere(const SelectStatement &stmt) {
+  QueryResult results;
+  SchemaRecord schema = getTableSchema(stmt.table_name);
+  uint32_t root_page = getTableRootPage(stmt.table_name);
+  BTreePage<PageType::LeafTable> page(_reader, _header.page_size, root_page);
+
+  std::vector<int> column_positions =
+      mapColumnPositions(stmt.column_names, schema);
+  int where_col_pos =
+      findWhereColumnPosition(stmt.where_clause->column, schema);
+
+  for (const auto &cell : page.getCells()) {
+    BTreeRecord record(cell.payload);
+    const auto &values = record.getValues();
+
+    if (!matchesWhereCondition(values, where_col_pos, *stmt.where_clause)) {
+      continue;
+    }
+
+    Row row;
+    for (int pos : column_positions) {
+      if (pos < values.size()) {
+        row.push_back(values[pos]);
+      }
+    }
+    results.push_back(row);
+  }
+
+  return results;
+}
+
+std::vector<int>
+Database::mapColumnPositions(const std::vector<std::string> &column_names,
+                             const SchemaRecord &schema) {
+  std::vector<int> positions;
+  for (const auto &col_name : column_names) {
+    for (const auto &col_info : schema.columns) {
+      if (col_info.name == col_name) {
+        positions.push_back(col_info.position);
+        break;
+      }
+    }
+  }
+  return positions;
+}
+
+int Database::findWhereColumnPosition(const std::string &column_name,
+                                      const SchemaRecord &schema) {
+  for (const auto &col_info : schema.columns) {
+    if (col_info.name == column_name) {
+      return col_info.position;
+    }
+  }
+  return -1;
+}
+
+bool Database::matchesWhereCondition(const std::vector<RecordValue> &values,
+                                     int where_col_pos,
+                                     const WhereClause &where) {
+  if (where_col_pos < 0 || where_col_pos >= values.size()) {
+    return false;
+  }
+
+  const auto &cell_value = values[where_col_pos];
+  if (std::holds_alternative<std::string>(cell_value)) {
+    const std::string &value = std::get<std::string>(cell_value);
+    std::string where_value = where.value;
+    if (where_value.front() == '\'' && where_value.back() == '\'') {
+      where_value = where_value.substr(1, where_value.length() - 2);
+    }
+    return where.operator_type == "=" && value == where_value;
+  }
+  return false;
 }

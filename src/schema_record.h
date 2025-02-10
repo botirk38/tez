@@ -1,6 +1,6 @@
 #pragma once
 #include "btree_record.h"
-#include "lexer.h"
+#include "sql_parser.h"
 
 struct ColumnInfo {
   std::string name;

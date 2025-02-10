@@ -1,6 +1,5 @@
 #pragma once
 #include "file_reader.h"
-#include "lexer.h"
 #include "schema_record.h"
 #include <cstdint>
 #include <stdatomic.h>
@@ -55,4 +54,14 @@ private:
   uint32_t getTableRowCount(const std::string &table_name);
   uint32_t countLeafPageCells(uint32_t page_num);
   SchemaRecord getTableSchema(const std::string &table_name);
+  QueryResult executeCountStar(const std::string &table_name);
+  QueryResult executeSelectWithoutWhere(const SelectStatement &stmt);
+  QueryResult executeSelectWithWhere(const SelectStatement &stmt);
+  std::vector<int>
+  mapColumnPositions(const std::vector<std::string> &column_names,
+                     const SchemaRecord &schema);
+  int findWhereColumnPosition(const std::string &column_name,
+                              const SchemaRecord &schema);
+  bool matchesWhereCondition(const std::vector<RecordValue> &values,
+                             int where_col_pos, const WhereClause &where);
 };
