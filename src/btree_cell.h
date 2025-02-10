@@ -90,18 +90,6 @@ private:
     payload.resize(local_size);
     reader_.readBytes(payload.data(), local_size);
 
-    if (total_size > local_size) {
-      uint32_t overflow_page = reader_.readU32();
-      LOG_INFO("Reading overflow page: " << overflow_page);
-
-      auto overflow_content =
-          OverflowPage::readOverflowChain(reader_, page_size_, overflow_page);
-      LOG_DEBUG("Read overflow content size: " << overflow_content.size());
-
-      payload.insert(payload.end(), overflow_content.begin(),
-                     overflow_content.end());
-    }
-
     LOG_DEBUG("Completed reading payload, final size: " << payload.size());
     return payload;
   }
@@ -109,4 +97,3 @@ private:
   FileReader &reader_;
   const uint16_t page_size_;
 };
-

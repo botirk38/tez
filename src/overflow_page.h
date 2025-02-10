@@ -41,7 +41,11 @@ public:
 
     while (current_page != 0) {
       // Seek to current overflow page
-      reader.seek((sqlite::SCHEMA_PAGE - 1) * page_size + sqlite::HEADER_SIZE);
+
+      // Calculate correct page offset
+
+      // Seek to start of current overflow page
+      reader.seekToPage(current_page, page_size);
 
       // Read this overflow page
       OverflowPage overflow_reader(reader, page_size);

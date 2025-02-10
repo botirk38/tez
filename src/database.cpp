@@ -229,29 +229,14 @@ QueryResult Database::executeSelectWithWhere(const SelectStatement &stmt) {
   QueryResult results;
   SchemaRecord schema = getTableSchema(stmt.table_name);
   uint32_t root_page = getTableRootPage(stmt.table_name);
-  BTreePage<PageType::LeafTable> page(_reader, _header.page_size, root_page);
 
   std::vector<int> column_positions =
       mapColumnPositions(stmt.column_names, schema);
   int where_col_pos =
       findWhereColumnPosition(stmt.where_clause->column, schema);
 
-  for (const auto &cell : page.getCells()) {
-    BTreeRecord record(cell.payload);
-    const auto &values = record.getValues();
-
-    if (!matchesWhereCondition(values, where_col_pos, *stmt.where_clause)) {
-      continue;
-    }
-
-    Row row;
-    for (int pos : column_positions) {
-      if (pos < values.size()) {
-        row.push_back(values[pos]);
-      }
-    }
-    results.push_back(row);
-  }
+  traverseBTree(root_page, column_positions, where_col_pos, *stmt.where_clause,
+                results);
 
   return results;
 }
@@ -260,7 +245,13 @@ std::vector<int>
 Database::mapColumnPositions(const std::vector<std::string> &column_names,
                              const SchemaRecord &schema) {
   std::vector<int> positions;
+
   for (const auto &col_name : column_names) {
+    if (col_name == "id") {
+      positions.push_back(-1); // Special marker for id/rowid column
+      continue;
+    }
+
     for (const auto &col_info : schema.columns) {
       if (col_info.name == col_name) {
         positions.push_back(col_info.position);
@@ -268,6 +259,7 @@ Database::mapColumnPositions(const std::vector<std::string> &column_names,
       }
     }
   }
+
   return positions;
 }
 
@@ -298,4 +290,79 @@ bool Database::matchesWhereCondition(const std::vector<RecordValue> &values,
     return where.operator_type == "=" && value == where_value;
   }
   return false;
+}
+
+void Database::traverseBTree(uint32_t page_num,
+                             const std::vector<int> &column_positions,
+                             int where_col_pos, const WhereClause &where,
+                             QueryResult &results) {
+  LOG_DEBUG("Traversing B-tree page: " << page_num);
+
+  // First read the page type without consuming it
+  _reader.seekToPage(page_num, _header.page_size);
+  uint8_t page_type = _reader.readU8();
+
+  // Reset position
+  _reader.seek(_header.page_size * (page_num - 1));
+
+  if (static_cast<PageType>(page_type) == PageType::InteriorTable) {
+    LOG_DEBUG("Processing interior page: " << page_num);
+    BTreePage<PageType::InteriorTable> page(_reader, _header.page_size,
+                                            page_num);
+    processInteriorPage(page, column_positions, where_col_pos, where, results);
+  } else {
+    LOG_DEBUG("Processing leaf page: " << page_num);
+    BTreePage<PageType::LeafTable> page(_reader, _header.page_size, page_num);
+    processLeafPage(page, column_positions, where_col_pos, where, results);
+  }
+}
+
+void Database::processLeafPage(const BTreePage<PageType::LeafTable> &page,
+                               const std::vector<int> &column_positions,
+                               int where_col_pos, const WhereClause &where,
+                               QueryResult &results) {
+  LOG_DEBUG("Processing leaf page cells");
+
+  for (const auto &cell : page.getCells()) {
+    BTreeRecord record(cell.payload);
+    const auto &values = record.getValues();
+
+    LOG_DEBUG("Checking record against where condition");
+
+    if (matchesWhereCondition(values, where_col_pos, where)) {
+      Row row;
+
+      // Add requested columns
+      for (int pos : column_positions) {
+        if (pos == -1) {
+          // Special case for 'id' column - use rowid
+          row.push_back(static_cast<int64_t>(cell.row_id));
+        } else if (pos < values.size()) {
+          row.push_back(values[pos]);
+        }
+      }
+
+      LOG_DEBUG("Adding matching row to results");
+      results.push_back(row);
+    }
+  }
+}
+void Database::processInteriorPage(
+    const BTreePage<PageType::InteriorTable> &page,
+    const std::vector<int> &column_positions, int where_col_pos,
+    const WhereClause &where, QueryResult &results) {
+  LOG_DEBUG("Processing interior page cells");
+
+  for (const auto &cell : page.getCells()) {
+    uint32_t child_page = cell.page_number;
+    LOG_DEBUG("Traversing child page: " << child_page);
+    traverseBTree(child_page, column_positions, where_col_pos, where, results);
+  }
+
+  if (page.getHeader().right_most_pointer) {
+    LOG_DEBUG("Traversing right-most pointer: "
+              << page.getHeader().right_most_pointer);
+    traverseBTree(page.getHeader().right_most_pointer, column_positions,
+                  where_col_pos, where, results);
+  }
 }

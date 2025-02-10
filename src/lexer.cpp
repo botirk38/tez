@@ -67,6 +67,25 @@ Token Lexer::nextToken() {
     return Token(TokenType::Eof);
   }
 
+  if (input_[position_] == '\'' || input_[position_] == '"') {
+    char quote = input_[position_];
+    position_++; // Skip opening quote
+    std::string value;
+
+    while (position_ < input_.length() && input_[position_] != quote) {
+      value += input_[position_];
+      position_++;
+    }
+
+    if (position_ < input_.length()) {
+      position_++; // Skip closing quote
+    }
+
+    // Return quoted identifiers as Identifier type when in appropriate context
+    return Token(quote == '\'' ? TokenType::String : TokenType::Identifier,
+                 value);
+  }
+
   if (input_[position_] == '(') {
     position_++;
     return Token(TokenType::LParen);

@@ -102,55 +102,98 @@ SQLParser::parseCreateStatement(Lexer &lexer) {
   LOG_DEBUG("Starting CREATE TABLE statement parse");
   auto stmt = std::make_unique<CreateTableStatement>();
 
+  // Skip CREATE TABLE keywords
   auto token = lexer.nextToken();
-  while (token.type() != TokenType::Identifier) {
+  LOG_DEBUG("Parsing CREATE TABLE tokens");
+  while (token.type() != TokenType::Table) {
+    LOG_DEBUG("Skipping token: " << static_cast<int>(token.type()));
     token = lexer.nextToken();
   }
 
-  LOG_DEBUG("Found table name: " << token.value());
-  stmt->table_name = token.value();
-
+  // Get table name
   token = lexer.nextToken();
-  while (token.type() != TokenType::LParen) {
-    token = lexer.nextToken();
+  LOG_DEBUG(
+      "Looking for table name token, got: " << static_cast<int>(token.type()));
+  if (token.type() != TokenType::Identifier &&
+      token.type() != TokenType::String) {
+    LOG_ERROR("Expected table name, got: " << static_cast<int>(token.type()));
+    throw std::runtime_error("Expected table name");
+  }
+  stmt->table_name = token.value();
+  LOG_DEBUG("Found table name: " << stmt->table_name);
+
+  // Expect opening parenthesis
+  token = lexer.nextToken();
+  LOG_DEBUG("Looking for opening parenthesis, got: "
+            << static_cast<int>(token.type()));
+  if (token.type() != TokenType::LParen) {
+    LOG_ERROR("Expected opening parenthesis, got: "
+              << static_cast<int>(token.type()));
+    throw std::runtime_error("Expected ( after table name");
   }
 
-  LOG_DEBUG("Parsing column definitions");
+  // Parse column definitions
+  LOG_DEBUG("Starting column definitions parse");
   while (true) {
     token = lexer.nextToken();
+    LOG_DEBUG("Processing token: " << static_cast<int>(token.type()));
+
     if (token.type() == TokenType::RParen) {
+      LOG_DEBUG("Found closing parenthesis, ending column definitions");
       break;
     }
 
-    if (token.type() == TokenType::Identifier) {
-      Column col;
-      col.name = token.value();
-      LOG_DEBUG("Found column name: " << col.name);
+    Column col;
 
-      token = lexer.nextToken();
-      if (token.type() != TokenType::Identifier) {
-        LOG_ERROR(
-            "Expected column type, got: " << static_cast<int>(token.type()));
-        throw std::runtime_error("Expected column type");
-      }
-      col.type = token.value();
-      LOG_DEBUG("Found column type: " << col.type);
+    // Column name
+    if (token.type() != TokenType::Identifier) {
+      LOG_ERROR(
+          "Expected column name, got: " << static_cast<int>(token.type()));
+      throw std::runtime_error("Expected column name");
+    }
+    col.name = token.value();
+    LOG_DEBUG("Parsing column name: " << col.name);
 
-      stmt->columns.push_back(std::move(col));
+    // Column type
+    token = lexer.nextToken();
+    LOG_DEBUG(
+        "Looking for column type, got: " << static_cast<int>(token.type()));
+    if (token.type() != TokenType::Identifier) {
+      LOG_ERROR(
+          "Expected column type, got: " << static_cast<int>(token.type()));
+      throw std::runtime_error("Expected column type");
+    }
+    col.type = token.value();
+    LOG_DEBUG("Found column type: " << col.type);
 
-      token = lexer.nextToken();
-      while (token.type() != TokenType::Comma &&
-             token.type() != TokenType::RParen) {
+    // Parse additional column constraints
+    LOG_DEBUG("Parsing column constraints");
+    token = lexer.nextToken();
+    while (token.type() != TokenType::Comma &&
+           token.type() != TokenType::RParen) {
+      LOG_DEBUG(
+          "Processing constraint token: " << static_cast<int>(token.type()));
+      if (token.type() == TokenType::Primary ||
+          token.type() == TokenType::Key ||
+          token.type() == TokenType::Identifier) {
         token = lexer.nextToken();
+        continue;
       }
+      LOG_ERROR(
+          "Invalid column constraint: " << static_cast<int>(token.type()));
+      throw std::runtime_error("Invalid column constraint");
+    }
 
-      if (token.type() == TokenType::RParen) {
-        break;
-      }
+    LOG_DEBUG("Adding column to statement: " << col.name);
+    stmt->columns.push_back(std::move(col));
+
+    if (token.type() == TokenType::RParen) {
+      LOG_DEBUG("Found closing parenthesis, ending column definitions");
+      break;
     }
   }
 
-  LOG_DEBUG("Completed parsing CREATE TABLE statement");
+  LOG_DEBUG("Successfully completed parsing CREATE TABLE statement");
   return stmt;
 }
 

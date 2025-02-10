@@ -1,4 +1,6 @@
 #pragma once
+#include "btree_cell.h"
+#include "btree_page.h"
 #include "file_reader.h"
 #include "schema_record.h"
 #include <cstdint>
@@ -64,4 +66,19 @@ private:
                               const SchemaRecord &schema);
   bool matchesWhereCondition(const std::vector<RecordValue> &values,
                              int where_col_pos, const WhereClause &where);
+
+  void traverseBTree(uint32_t page_num,
+                     const std::vector<int> &column_positions,
+                     int where_col_pos, const WhereClause &where,
+                     QueryResult &results);
+
+  void processLeafPage(const BTreePage<PageType::LeafTable> &page,
+                       const std::vector<int> &column_positions,
+                       int where_col_pos, const WhereClause &where,
+                       QueryResult &results);
+
+  void processInteriorPage(const BTreePage<PageType::InteriorTable> &page,
+                           const std::vector<int> &column_positions,
+                           int where_col_pos, const WhereClause &where,
+                           QueryResult &results);
 };
