@@ -6,11 +6,12 @@
 #include <algorithm>
 #include <cstdint>
 
-Database::Database(const std::string &filename) : _reader(filename) {
+Database::Database(const std::string &filename)
+    : _reader(filename), _table_manager(_reader, _header) {
   LOG_INFO("Opening database file: " << filename);
 }
 
-SqliteHeader Database::readHeader() {
+sqlite::Header Database::readHeader() {
   LOG_INFO("Reading SQLite _header");
   size_t current_offset = 0;
 
@@ -72,18 +73,14 @@ uint16_t Database::getTableCount() {
   LOG_INFO("Counting tables in database");
   uint16_t table_count = 0;
 
-  // Create a B-tree page for the schema
-  LOG_DEBUG("Creating B-tree page for schema with page size "
-            << _header.page_size);
   BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
                                              sqlite::SCHEMA_PAGE);
 
-  // Iterate through cells and verify each is a table
   LOG_DEBUG("Examining " << schema_page.getCells().size() << " cells");
   for (const auto &cell : schema_page.getCells()) {
     if (cell.payload.empty())
       continue;
-    if (isTableRecord(cell.payload)) {
+    if (_table_manager.isTableRecord(cell.payload)) {
       table_count++;
       LOG_DEBUG("Found table record, current count: " << table_count);
     }
@@ -93,96 +90,27 @@ uint16_t Database::getTableCount() {
   return table_count;
 }
 
-bool Database::isTableRecord(const std::vector<uint8_t> &payload) {
-  LOG_DEBUG("Analyzing record payload of size " << payload.size());
-
-  // Use our new BTreeRecord parser
-  BTreeRecord record(payload);
-  const auto &values = record.getValues();
-
-  // Schema table records should have at least one value for the type
-  if (values.empty()) {
-    LOG_DEBUG("Empty record, not a table");
-    return false;
-  }
-
-  // First value should be a string containing the type
-  if (!std::holds_alternative<std::string>(values[0])) {
-    LOG_DEBUG("First value is not a string type");
-    return false;
-  }
-
-  // Check if the type is "table"
-  const std::string &type = std::get<std::string>(values[0]);
-  LOG_DEBUG("Record type: " << type);
-
-  return type == "table";
-}
-
 std::vector<std::string> Database::getTableNames() {
   LOG_INFO("Getting table names from database");
   std::vector<std::string> table_names;
-
-  // Seek to start of first page + _header size
 
   BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
                                              sqlite::SCHEMA_PAGE);
 
   LOG_DEBUG("Processing " << schema_page.getCells().size()
                           << " schema records");
-
   for (const auto &cell : schema_page.getCells()) {
     BTreeRecord record(cell.payload);
-    SchemaRecord schema = SchemaRecord::fromRecord(record);
+    SchemaRecord schema = SchemaRecord(record);
 
-    if (isUserTable(schema)) {
-      LOG_DEBUG("Found user table: " << schema.tbl_name);
-      table_names.push_back(schema.tbl_name);
+    if (_table_manager.isUserTable(schema)) {
+      LOG_DEBUG("Found user table: " << schema.getTableName());
+      table_names.push_back(schema.getTableName());
     }
   }
 
   LOG_INFO("Found " << table_names.size() << " user tables");
   return table_names;
-}
-
-uint32_t Database::getTableRowCount(const std::string &table_name) {
-  uint32_t root_page = getTableRootPage(table_name);
-  BTreePage<PageType::LeafTable> page(_reader, _header.page_size, root_page);
-  return page.getHeader().cell_count;
-}
-
-uint32_t Database::getTableRootPage(const std::string &table_name) {
-  BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
-                                             sqlite::SCHEMA_PAGE);
-
-  for (const auto &cell : schema_page.getCells()) {
-    BTreeRecord record(cell.payload);
-    SchemaRecord schema = SchemaRecord::fromRecord(record);
-
-    if (schema.type == "table" && schema.name == table_name) {
-      return static_cast<uint32_t>(schema.rootpage);
-    }
-  }
-  throw std::runtime_error("Table not found: " + table_name);
-}
-
-bool Database::isUserTable(const SchemaRecord &record) {
-  // Check if it's a table and not an internal table
-  return record.type == "table" && record.name.compare(0, 7, "sqlite_") != 0;
-}
-
-SchemaRecord Database::getTableSchema(const std::string &table_name) {
-  BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
-                                             sqlite::SCHEMA_PAGE);
-
-  for (const auto &cell : schema_page.getCells()) {
-    BTreeRecord record(cell.payload);
-    auto schema = SchemaRecord::fromRecord(record);
-    if (schema.name == table_name) {
-      return schema;
-    }
-  }
-  throw std::runtime_error("Table not found: " + table_name);
 }
 
 QueryResult Database::executeSelect(const SelectStatement &stmt) {
@@ -197,15 +125,16 @@ QueryResult Database::executeSelect(const SelectStatement &stmt) {
 QueryResult Database::executeCountStar(const std::string &table_name) {
   QueryResult results;
   Row count_row;
-  count_row.push_back(static_cast<int64_t>(getTableRowCount(table_name)));
+  count_row.push_back(
+      static_cast<int64_t>(_table_manager.getTableRowCount(table_name)));
   results.push_back(count_row);
   return results;
 }
 
 QueryResult Database::executeSelectWithoutWhere(const SelectStatement &stmt) {
   QueryResult results;
-  SchemaRecord schema = getTableSchema(stmt.table_name);
-  uint32_t root_page = getTableRootPage(stmt.table_name);
+  SchemaRecord schema = _table_manager.getTableSchema(stmt.table_name);
+  uint32_t root_page = _table_manager.getTableRootPage(stmt.table_name);
   std::vector<int> column_positions =
       mapColumnPositions(stmt.column_names, schema);
 
@@ -226,7 +155,7 @@ Database::mapColumnPositions(const std::vector<std::string> &column_names,
       continue;
     }
 
-    for (const auto &col_info : schema.columns) {
+    for (const auto &col_info : schema.getColumns()) {
       if (col_info.name == col_name) {
         positions.push_back(col_info.position);
         break;
@@ -239,7 +168,7 @@ Database::mapColumnPositions(const std::vector<std::string> &column_names,
 
 int Database::findWhereColumnPosition(const std::string &column_name,
                                       const SchemaRecord &schema) {
-  for (const auto &col_info : schema.columns) {
+  for (const auto &col_info : schema.getColumns()) {
     if (col_info.name == column_name) {
       return col_info.position;
     }
@@ -489,8 +418,8 @@ QueryResult Database::executeSelectWithWhere(const SelectStatement &stmt) {
   } catch (const std::runtime_error &) {
     // No index available, fall back to full table scan
     LOG_INFO("No index found, performing full table scan");
-    SchemaRecord schema = getTableSchema(stmt.table_name);
-    uint32_t root_page = getTableRootPage(stmt.table_name);
+    SchemaRecord schema = _table_manager.getTableSchema(stmt.table_name);
+    uint32_t root_page = _table_manager.getTableRootPage(stmt.table_name);
     std::vector<int> column_positions =
         mapColumnPositions(stmt.column_names, schema);
     int where_col_pos =
@@ -510,8 +439,8 @@ QueryResult Database::fetchRowsByIds(const std::string &table_name,
   LOG_DEBUG("Number of rowids to fetch: " << rowids.size());
 
   QueryResult results;
-  SchemaRecord schema = getTableSchema(table_name);
-  uint32_t root_page = getTableRootPage(table_name);
+  SchemaRecord schema = _table_manager.getTableSchema(table_name);
+  uint32_t root_page = _table_manager.getTableRootPage(table_name);
   std::vector<int> column_positions = mapColumnPositions(columns, schema);
 
   LOG_DEBUG("Table root page: " << root_page);

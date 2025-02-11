@@ -1,14 +1,33 @@
 #pragma once
 #include "btree_record.h"
 #include "sql_parser.h"
+#include <string>
+#include <vector>
 
-struct ColumnInfo {
+class ColumnInfo {
+public:
   std::string name;
   std::string type;
   int position;
 };
 
-struct SchemaRecord {
+class SchemaRecord {
+public:
+  explicit SchemaRecord(const BTreeRecord &record);
+
+  std::vector<int>
+  mapColumnPositions(const std::vector<std::string> &column_names) const;
+  int findWhereColumnPosition(const std::string &column_name) const;
+
+  // Getters
+  const std::string &getType() const { return type; }
+  const std::string &getName() const { return name; }
+  const std::string &getTableName() const { return tbl_name; }
+  int64_t getRootPage() const { return rootpage; }
+  const std::string &getSql() const { return sql; }
+  const std::vector<ColumnInfo> &getColumns() const { return columns; }
+
+private:
   std::string type;
   std::string name;
   std::string tbl_name;
@@ -16,31 +35,5 @@ struct SchemaRecord {
   std::string sql;
   std::vector<ColumnInfo> columns;
 
-  void parseColumns() {
-    if (sql.empty())
-      return;
-
-    auto create_stmt = SQLParser::parseCreate(sql);
-    for (size_t i = 0; i < create_stmt->columns.size(); i++) {
-      const auto &col = create_stmt->columns[i];
-      columns.push_back({col.name, col.type, static_cast<int>(i)});
-    }
-  }
-
-  static SchemaRecord fromRecord(const BTreeRecord &record) {
-    const auto &values = record.getValues();
-    SchemaRecord schema;
-
-    if (values.size() >= 5) {
-      schema.type = std::get<std::string>(values[0]);
-      schema.name = std::get<std::string>(values[1]);
-      schema.tbl_name = std::get<std::string>(values[2]);
-      schema.rootpage = std::get<int64_t>(values[3]);
-      schema.sql = std::get<std::string>(values[4]);
-
-      schema.parseColumns();
-    }
-
-    return schema;
-  }
+  void parseColumns();
 };
