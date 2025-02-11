@@ -23,7 +23,7 @@
 
 ## Project Overview
 ### Introduction
-**SQLite Starter C++** is a C++ project designed to interact with SQLite databases. It utilizes the C++23 standard and is built using CMake.
+**Tez+** is a C++ project designed to interact with SQLite databases. It utilizes the C++23 standard and is built using CMake.
 
 ### Key Features
 - SQLite database interaction
