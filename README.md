@@ -41,16 +41,12 @@ To try **Tez**, follow these steps:
    cmake -B build
    cmake --build build
    ```
-3. Start the database server:
+3. Start the database:
    ```sh
-   ./build/tez_server
+   ./your_program.sh
    ```
-4. Run the SQL parser:
-   ```sh
-   ./build/tez_sql_parser
-   ```
-
 ## Installation
+
 ### Prerequisites
 Before installing, ensure you have:
 - **C++20 or newer**  
@@ -58,20 +54,6 @@ Before installing, ensure you have:
 - **A C++ compiler** (GCC, Clang, or MSVC)  
 - **Linux, macOS, or Windows**  
 
-### Build Instructions
-```sh
-git clone https://github.com/botirk38/tez.git
-cd tez
-cmake -B build
-cmake --build build
-```
-
-## Building & Deployment
-
-### Building the Project
-```sh
-./your_program.sh
-```
 
 ## Contributing
 We welcome contributions! Follow these steps:
