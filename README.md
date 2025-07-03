@@ -1,99 +1,158 @@
-# <p align="center">🚀 Tez Database Management System</p>
+# Tez SQLite Database Engine
 
-<p align="center">
-    <em>A C++-based database management system with SQL parsing capabilities.</em>
-</p>
+A high-performance SQLite-compatible database engine implementation written in C++. Tez provides efficient query execution with advanced B-tree index scanning and SQL parsing capabilities.
 
-## 📖 Table of Contents
+## Features
 
-- [Overview](#-overview)
-- [Features](#-features)
-- [Getting Started](#-getting-started)
-- [Usage](#-usage)
-- [Additional Information](#-additional-information)
+### Core Database Operations
+- **Table Scanning**: Full table traversal with WHERE clause filtering
+- **Index Scanning**: Optimized B-tree index traversal for fast lookups
+- **Query Execution**: Support for SELECT statements with column projection and filtering
 
-## 🔥 Overview
+### SQL Support
+- `SELECT` statements with column selection
+- `WHERE` clauses with equality operators
+- `COUNT(*)` aggregate functions
+- `CREATE TABLE` statement parsing
+- `.tables` meta-command support
 
-The Tez Database Management System is a C++-based project that provides a basic database management system with SQL parsing capabilities. It includes features such as a B-tree index, SQL parser, and database management.
+### Advanced B-tree Implementation
+- **Comprehensive Index Scanning**: Scans both interior and leaf index pages
+- **Efficient Row Retrieval**: Binary search-based row lookup in table B-trees
+- **SQLite Format Compatibility**: Full compatibility with SQLite database files
+- **Duplicate Prevention**: Automatic deduplication of results from index scans
 
-## ✨ Features
+## Architecture
 
-- ✅ **B-tree Indexing**: Efficient indexing for fast data retrieval
-- ✅ **SQL Parsing**: Parse SQL queries for execution
-- ✅ **Database Management**: Manage database operations such as create, read, update, and delete
+### Key Components
 
-## 🚀 Getting Started
+#### B-tree Engine (`src/btree.cpp`)
+- **Index Scanning**: Traverses both interior and leaf index pages to find all matching records
+- **Table Scanning**: Efficient traversal of table B-tree structures
+- **Row Retrieval**: Fast lookup of specific rows by row ID
 
-### 🔧 Prerequisites
+#### SQL Parser (`src/sql_parser.cpp`)
+- **Query Parsing**: Converts SQL strings into executable query structures
+- **Schema Parsing**: Handles CREATE TABLE statements with optional column types
+- **WHERE Clause Processing**: Parses and validates filtering conditions
 
-- C++ compiler (e.g., GCC)
-- CMake for building
-- VCPKG for dependency management
+#### Database Manager (`src/database.cpp`)
+- **Query Routing**: Decides between index scan and table scan based on available indexes
+- **Schema Management**: Handles table and index metadata
+- **Result Assembly**: Combines data from multiple sources into final query results
 
-### 🛠 Installation
+#### File Reader (`src/file_reader.cpp`)
+- **SQLite File Format**: Reads and interprets SQLite database file structures
+- **Page Management**: Handles database page reading and navigation
+- **Binary Data Processing**: Converts raw database bytes into structured data
 
-1. Clone the repository: `git clone https://github.com/botirk38/tez.git`
-2. Build the project using CMake: `cmake .` and `make`
-3. Install dependencies using VCPKG: `vcpkg install`
+## Technical Highlights
 
-## ▶️ Usage
+### Index Scan Optimization
+Unlike traditional implementations that only scan leaf pages, Tez implements a comprehensive B-tree index scan that:
+- Examines both interior and leaf index pages for matching keys
+- Handles SQLite's unique index structure where data can exist in interior cells
+- Prevents duplicate results through efficient deduplication
+- Ensures complete result sets even when records are distributed across multiple page types
 
-1. Run the database management system: `./tez`
-2. Execute SQL queries: `SELECT * FROM table_name`
+### Query Processing Pipeline
+1. **SQL Parsing**: Convert SQL string to structured query object
+2. **Index Detection**: Check for available indexes on WHERE clause columns
+3. **Execution Strategy**: Choose between index scan or table scan
+4. **Data Retrieval**: Fetch matching rows using optimal strategy
+5. **Result Assembly**: Project requested columns and format output
 
-## 📈 Additional Information
+## Usage
 
-### 📊 Configuration
+### Command Line Interface
+```bash
+# Execute a SELECT query
+./your_program.sh database.db "SELECT id, name FROM companies WHERE country = 'eritrea'"
 
-- Configure the database management system using the `config.json` file
+# List all tables
+./your_program.sh database.db .tables
 
-### 🤝 Contributing
+# Count records
+./your_program.sh database.db "SELECT COUNT(*) FROM companies"
+```
 
-- Fork the repository
-- Create a new branch: `git checkout -b feature-branch`
-- Commit changes: `git commit -m "Add feature"`
-- Push to the branch: `git push origin feature-branch`
-- Open a pull request
+### Example Queries
+```sql
+-- Basic selection with WHERE clause
+SELECT id, name FROM companies WHERE country = 'eritrea'
 
-### 📜 License
+-- Column projection
+SELECT name FROM companies WHERE country = 'usa'
 
-This project is licensed under the [MIT License](LICENSE).
+-- Count aggregation
+SELECT COUNT(*) FROM companies WHERE country = 'canada'
+```
 
-### 📝 Documentation
+## Building
 
-- Documentation is available in the `docs` directory
-- API documentation is available at [API Documentation](https://example.com/api-docs)
+### Prerequisites
+- C++17 compatible compiler
+- CMake 3.10+
+- Standard C++ libraries
 
-### 📊 Roadmap
+### Build Steps
+```bash
+# Clone the repository
+git clone https://github.com/botirk38/tez.git
+cd tez
 
-- Implement additional SQL features
-- Improve performance and scalability
-- Add support for multiple database formats
+# Build with CMake
+cmake .
+make
 
-### 🙌 Acknowledgments
+# Run tests
+./your_program.sh sample.db .tables
+```
 
-- Inspired by [SQLite](https://www.sqlite.org/)
-- Special thanks to [Contributors](https://github.com/botirk38/tez/graphs/contributors)
+## Performance
 
-### 📚 Architecture Overview
+### Index Scanning Efficiency
+- **Complete Results**: Finds all matching records regardless of B-tree structure
+- **Optimal Traversal**: Minimizes unnecessary page reads while ensuring completeness
+- **Memory Efficiency**: Processes results incrementally without loading entire datasets
 
-The Tez Database Management System consists of several key components:
+### Query Optimization
+- **Automatic Index Selection**: Uses indexes when available for WHERE clauses
+- **Fallback Strategy**: Gracefully falls back to table scan when indexes are unavailable
+- **Result Deduplication**: Prevents duplicate records in final results
 
-* **B-tree Indexing**: Provides efficient indexing for fast data retrieval
-* **SQL Parser**: Parses SQL queries for execution
-* **Database Management**: Manages database operations such as create, read, update, and delete
-* **Thread Pool**: Handles concurrent database operations
+## File Structure
 
-### 📝 Error Handling
+```
+src/
+├── btree.cpp              # B-tree operations and index scanning
+├── btree.hpp              # B-tree interface definitions
+├── database.cpp           # Database management and query execution
+├── database.hpp           # Database interface
+├── sql_parser.cpp         # SQL parsing and query structure
+├── sql_parser.hpp         # Parser interface
+├── file_reader.cpp        # SQLite file format handling
+├── file_reader.hpp        # File reader interface
+├── schema_record.cpp      # Database schema management
+├── table_manager.cpp      # Table metadata handling
+└── Server.cpp             # Main application entry point
+```
 
-The Tez Database Management System uses a combination of error codes and exception handling to manage errors and exceptions. Error codes are used to indicate specific error conditions, while exceptions are used to handle unexpected errors.
+## Contributing
 
-### 📊 Future Development
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes with appropriate tests
+4. Commit your changes: `git commit -m "Add feature description"`
+5. Push to the branch: `git push origin feature-name`
+6. Submit a pull request
 
-The Tez Database Management System is actively being developed and expanded. Future plans include:
+## License
 
-* Implementing additional SQL features
-* Improving performance and scalability
-* Adding support for multiple database formats
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-Contributors are welcome to participate in the development process and help shape the future of the Tez Database Management System.
+## Acknowledgments
+
+- Inspired by SQLite's efficient B-tree implementation
+- Thanks to the CodeCrafters SQLite challenge for providing test cases and database samples
+- Special recognition to the SQLite documentation for B-tree structure insights

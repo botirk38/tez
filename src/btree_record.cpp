@@ -1,5 +1,5 @@
-#include "btree_record.h"
-#include "debug.h"
+#include "btree_record.hpp"
+#include "debug.hpp"
 
 BTreeRecord::BTreeRecord(const std::vector<uint8_t> &payload)
     : reader_(payload) {

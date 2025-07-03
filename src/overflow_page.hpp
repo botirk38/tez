@@ -1,13 +1,13 @@
 #pragma once
 
-#include "file_reader.h"
-#include "sqlite_constants.h"
+#include "file_reader.hpp"
+#include "sqlite_constants.hpp"
 #include <cstdint>
 #include <vector>
 
 class OverflowPage {
 public:
-  explicit OverflowPage(FileReader &reader, uint16_t page_size)
+  explicit OverflowPage(const FileReader &reader, uint16_t page_size)
       : reader_(reader), page_size_(page_size) {}
 
   struct Data {
@@ -34,7 +34,7 @@ public:
 
   // Helper to read entire overflow chain
   [[nodiscard]] static auto
-  readOverflowChain(FileReader &reader, uint16_t page_size, uint32_t first_page)
+  readOverflowChain(const FileReader &reader, uint16_t page_size, uint32_t first_page)
       -> std::vector<uint8_t> {
     std::vector<uint8_t> complete_content;
     uint32_t current_page = first_page;
@@ -63,6 +63,6 @@ public:
   }
 
 private:
-  FileReader &reader_;
+  const FileReader &reader_;
   const uint16_t page_size_;
 };

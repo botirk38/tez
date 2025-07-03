@@ -1,5 +1,5 @@
-#include "sql_parser.h"
-#include "debug.h"
+#include "sql_parser.hpp"
+#include "debug.hpp"
 
 std::unique_ptr<SelectStatement>
 SQLParser::parseSelect(const std::string &sql) {
@@ -154,21 +154,22 @@ SQLParser::parseCreateStatement(Lexer &lexer) {
     col.name = token.value();
     LOG_DEBUG("Parsing column name: " << col.name);
 
-    // Column type
+    // Column type (optional in SQLite)
     token = lexer.nextToken();
     LOG_DEBUG(
         "Looking for column type, got: " << static_cast<int>(token.type()));
-    if (token.type() != TokenType::Identifier) {
-      LOG_ERROR(
-          "Expected column type, got: " << static_cast<int>(token.type()));
-      throw std::runtime_error("Expected column type");
+    if (token.type() == TokenType::Identifier) {
+      col.type = token.value();
+      LOG_DEBUG("Found column type: " << col.type);
+      token = lexer.nextToken();
+    } else {
+      // No explicit type specified, default to TEXT
+      col.type = "TEXT";
+      LOG_DEBUG("No explicit column type, defaulting to TEXT");
     }
-    col.type = token.value();
-    LOG_DEBUG("Found column type: " << col.type);
 
     // Parse additional column constraints
     LOG_DEBUG("Parsing column constraints");
-    token = lexer.nextToken();
     while (token.type() != TokenType::Comma &&
            token.type() != TokenType::RParen) {
       LOG_DEBUG(

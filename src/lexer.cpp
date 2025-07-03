@@ -1,4 +1,4 @@
-#include "lexer.h"
+#include "lexer.hpp"
 #include <cctype>
 
 Lexer::Lexer(std::string input) : input_(std::move(input)) {}

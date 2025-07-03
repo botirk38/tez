@@ -1,7 +1,7 @@
 #pragma once
-#include "btree_cell.h"
-#include "debug.h"
-#include "file_reader.h"
+#include "btree_cell.hpp"
+#include "debug.hpp"
+#include "file_reader.hpp"
 #include <concepts>
 #include <cstdint>
 #include <type_traits>
@@ -22,7 +22,7 @@ public:
         right_most_pointer{};
   };
 
-  explicit BTreePage(FileReader &reader, uint16_t page_size,
+  explicit BTreePage(const FileReader &reader, uint16_t page_size,
                      uint32_t page_number)
       : reader_(reader), page_size_(page_size), page_number_(page_number) {
     LOG_DEBUG("Creating BTreePage with page size: " << page_size);
@@ -99,7 +99,7 @@ private:
       readCell();
     }
 
-    LOG_DEBUG("Read " << cells_.size() << " celDEBUGuccessfully");
+    LOG_DEBUG("Read " << cells_.size() << " cells successfully");
   }
 
   void readCell() {
@@ -108,7 +108,7 @@ private:
     cells_.push_back(cell_reader.read());
   }
 
-  FileReader &reader_;
+  const FileReader &reader_;
   const uint16_t page_size_;
   Header header_{};
   std::vector<Cell> cells_{};

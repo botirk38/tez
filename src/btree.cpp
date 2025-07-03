@@ -1,16 +1,16 @@
-#include "btree.h"
-#include "btree_record.h"
-#include "debug.h"
-#include "schema_record.h"
+#include "btree.hpp"
+#include "btree_record.hpp"
+#include "debug.hpp"
+#include "schema_record.hpp"
 #include <algorithm>
 
-BTree::BTree(FileReader &reader, const sqlite::Header &header)
+BTree::BTree(FileReader &reader, const sqlite::Header &header) noexcept
     : _reader(reader), _header(header) {}
 
 void BTree::traverse(uint32_t page_num,
                      const std::vector<int> &column_positions,
                      int where_col_pos, const WhereClause &where,
-                     sqlite::QueryResult &results) {
+                     sqlite::QueryResult &results) const {
   LOG_DEBUG("Traversing B-tree page: " << page_num);
 
   _reader.seekToPage(page_num, _header.page_size);
@@ -32,7 +32,7 @@ void BTree::traverse(uint32_t page_num,
 void BTree::processLeafPage(const BTreePage<PageType::LeafTable> &page,
                             const std::vector<int> &column_positions,
                             int where_col_pos, const WhereClause &where,
-                            sqlite::QueryResult &results) {
+                            sqlite::QueryResult &results) const {
   LOG_DEBUG("Processing leaf page cells");
 
   for (const auto &cell : page.getCells()) {
@@ -44,6 +44,7 @@ void BTree::processLeafPage(const BTreePage<PageType::LeafTable> &page,
     if (where_col_pos == -1 ||
         matchesWhereCondition(values, where_col_pos, where)) {
       Row row;
+      row.reserve(column_positions.size());
       for (int pos : column_positions) {
         if (pos == -1) {
           row.push_back(static_cast<int64_t>(cell.row_id));
@@ -59,7 +60,7 @@ void BTree::processLeafPage(const BTreePage<PageType::LeafTable> &page,
 void BTree::processInteriorPage(const BTreePage<PageType::InteriorTable> &page,
                                 const std::vector<int> &column_positions,
                                 int where_col_pos, const WhereClause &where,
-                                sqlite::QueryResult &results) {
+                                sqlite::QueryResult &results) const {
   LOG_DEBUG("Processing interior page cells");
 
   for (const auto &cell : page.getCells()) {
@@ -77,7 +78,7 @@ void BTree::processInteriorPage(const BTreePage<PageType::InteriorTable> &page,
 }
 
 std::vector<uint64_t> BTree::scanIndex(uint32_t index_root_page,
-                                       const std::string &search_value) {
+                                       const std::string &search_value) const {
   LOG_INFO("Scanning index starting at root page: " << index_root_page);
   LOG_DEBUG("Searching for value: " << search_value);
 
@@ -90,7 +91,7 @@ std::vector<uint64_t> BTree::scanIndex(uint32_t index_root_page,
 
 void BTree::traverseIndexBTree(uint32_t page_num,
                                const std::string &search_value,
-                               std::vector<uint64_t> &rowids) {
+                               std::vector<uint64_t> &rowids) const {
   LOG_DEBUG("Traversing index B-tree page: " << page_num);
 
   _reader.seekToPage(page_num, _header.page_size);
@@ -116,7 +117,10 @@ void BTree::traverseIndexBTree(uint32_t page_num,
         if (key == search_value) {
           uint64_t rowid = static_cast<uint64_t>(std::get<int64_t>(values[1]));
           LOG_DEBUG("Found matching rowid: " << rowid);
-          rowids.push_back(rowid);
+          // Check for duplicates before adding
+          if (std::find(rowids.begin(), rowids.end(), rowid) == rowids.end()) {
+            rowids.push_back(rowid);
+          }
         }
       }
     }
@@ -125,25 +129,29 @@ void BTree::traverseIndexBTree(uint32_t page_num,
     BTreePage<PageType::InteriorIndex> page(_reader, _header.page_size,
                                             page_num);
 
+    // Check interior cells for matching keys (they contain key + rowid payload)
     for (const auto &cell : page.getCells()) {
       BTreeRecord record(cell.payload);
       const auto &values = record.getValues();
 
       if (!values.empty() && std::holds_alternative<std::string>(values[0])) {
         std::string key = std::get<std::string>(values[0]);
-        LOG_DEBUG("Checking interior node key: " << key);
-
-        if (key >= search_value) {
-          LOG_DEBUG("Following child pointer to page: " << cell.page_number);
-          traverseIndexBTree(cell.page_number, search_value, rowids);
-          return;
+        
+        if (key == search_value && values.size() >= 2 && 
+            std::holds_alternative<int64_t>(values[1])) {
+          uint64_t rowid = static_cast<uint64_t>(std::get<int64_t>(values[1]));
+          // Check for duplicates before adding
+          if (std::find(rowids.begin(), rowids.end(), rowid) == rowids.end()) {
+            rowids.push_back(rowid);
+          }
         }
       }
+      
+      // Continue traversing child pages
+      traverseIndexBTree(cell.page_number, search_value, rowids);
     }
 
     if (page.getHeader().right_most_pointer) {
-      LOG_DEBUG("Following right-most pointer to page: "
-                << page.getHeader().right_most_pointer);
       traverseIndexBTree(page.getHeader().right_most_pointer, search_value,
                          rowids);
     }
@@ -152,7 +160,7 @@ void BTree::traverseIndexBTree(uint32_t page_num,
 
 void BTree::findRow(uint32_t page_num, uint64_t target_rowid,
                     const std::vector<int> &column_positions,
-                    sqlite::QueryResult &results) {
+                    sqlite::QueryResult &results) const {
   _reader.seekToPage(page_num, _header.page_size);
   uint8_t page_type = _reader.readU8();
   _reader.seekToPage(page_num, _header.page_size);
@@ -163,26 +171,24 @@ void BTree::findRow(uint32_t page_num, uint64_t target_rowid,
                                             page_num);
     const auto &cells = page.getCells();
 
+    if (cells.empty()) {
+      return;
+    }
+    
     if (target_rowid < cells[0].interior_row_id) {
       findRow(cells[0].left_pointer, target_rowid, column_positions, results);
       return;
     }
 
-    for (size_t i = 0; i < cells.size() - 1; i++) {
-      if (target_rowid >= cells[i].interior_row_id &&
-          target_rowid < cells[i + 1].interior_row_id) {
-        findRow(cells[i + 1].left_pointer, target_rowid, column_positions,
-                results);
-        return;
-      }
-    }
+    auto it = std::lower_bound(cells.begin(), cells.end(), target_rowid,
+                              [](const auto &cell, uint64_t rowid) {
+                                return cell.interior_row_id < rowid;
+                              });
 
-    if (target_rowid >= cells.back().interior_row_id) {
-      findRow(page.getHeader().right_most_pointer, target_rowid,
-              column_positions, results);
+    if (it == cells.end()) {
+      findRow(page.getHeader().right_most_pointer, target_rowid, column_positions, results);
     } else {
-      findRow(cells.back().left_pointer, target_rowid, column_positions,
-              results);
+      findRow(it->left_pointer, target_rowid, column_positions, results);
     }
   } else {
     BTreePage<PageType::LeafTable> page(_reader, _header.page_size, page_num);
@@ -192,6 +198,7 @@ void BTree::findRow(uint32_t page_num, uint64_t target_rowid,
         BTreeRecord record(cell.payload);
         const auto &values = record.getValues();
         Row row;
+        row.reserve(column_positions.size());
 
         for (int pos : column_positions) {
           if (pos == -1) {
@@ -208,7 +215,7 @@ void BTree::findRow(uint32_t page_num, uint64_t target_rowid,
 }
 
 bool BTree::matchesWhereCondition(const std::vector<RecordValue> &values,
-                                  int where_col_pos, const WhereClause &where) {
+                                  int where_col_pos, const WhereClause &where) noexcept {
   if (where_col_pos < 0 || where_col_pos >= values.size()) {
     return false;
   }
@@ -216,7 +223,7 @@ bool BTree::matchesWhereCondition(const std::vector<RecordValue> &values,
   const auto &cell_value = values[where_col_pos];
   if (std::holds_alternative<std::string>(cell_value)) {
     const std::string &value = std::get<std::string>(cell_value);
-    std::string where_value = where.value;
+    std::string_view where_value = where.value;
 
     if (where_value.front() == '\'' && where_value.back() == '\'') {
       where_value = where_value.substr(1, where_value.length() - 2);
@@ -229,7 +236,7 @@ bool BTree::matchesWhereCondition(const std::vector<RecordValue> &values,
 }
 
 int64_t BTree::getIndexRootPage(const std::string &table_name,
-                                const std::string &column_name) {
+                                const std::string &column_name) const {
   LOG_INFO("Looking for table: " << table_name);
   LOG_INFO("Index column: " << column_name);
 
@@ -273,14 +280,17 @@ int64_t BTree::getIndexRootPage(const std::string &table_name,
 QueryResult BTree::fetchRowsByIds(const std::vector<uint64_t> &rowids,
                                   const std::vector<std::string> &columns,
                                   const SchemaRecord &schema,
-                                  const uint32_t root_page) {
-  LOG_INFO("Fetching rows by IDs for table: " << table_name);
+                                  const uint32_t root_page) const {
+  LOG_INFO("Fetching rows by IDs, processing " << rowids.size() << " row IDs");
   LOG_DEBUG("Number of rowids to fetch: " << rowids.size());
 
   QueryResult results;
-  std::vector<int> column_positions = schema.mapColumnPositions(columns);
+  results.reserve(rowids.size());
+  const std::vector<int> column_positions = schema.mapColumnPositions(columns);
 
-  std::vector<uint64_t> sorted_rowids = rowids;
+  std::vector<uint64_t> sorted_rowids;
+  sorted_rowids.reserve(rowids.size());
+  sorted_rowids = rowids;
   std::sort(sorted_rowids.begin(), sorted_rowids.end());
 
   for (uint64_t rowid : sorted_rowids) {

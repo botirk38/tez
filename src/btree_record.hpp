@@ -1,5 +1,5 @@
 #pragma once
-#include "byte_reader.h"
+#include "byte_reader.hpp"
 #include <string>
 #include <variant>
 #include <vector>

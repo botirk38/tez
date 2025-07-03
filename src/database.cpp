@@ -1,6 +1,6 @@
-#include "database.h"
-#include "btree.h"
-#include "debug.h"
+#include "database.hpp"
+#include "btree.hpp"
+#include "debug.hpp"
 
 Database::Database(const std::string &filename)
     : _reader(filename), _table_manager(_reader, _header),
@@ -65,7 +65,7 @@ sqlite::Header Database::readHeader() {
   return _header;
 }
 
-uint16_t Database::getTableCount() {
+uint16_t Database::getTableCount() const {
   LOG_INFO("Counting tables in database");
   uint16_t table_count = 0;
   BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
@@ -81,7 +81,7 @@ uint16_t Database::getTableCount() {
   return table_count;
 }
 
-std::vector<std::string> Database::getTableNames() {
+std::vector<std::string> Database::getTableNames() const {
   LOG_INFO("Getting table names from database");
   std::vector<std::string> table_names;
   BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
@@ -99,7 +99,7 @@ std::vector<std::string> Database::getTableNames() {
   return table_names;
 }
 
-QueryResult Database::executeSelect(const SelectStatement &stmt) {
+QueryResult Database::executeSelect(const SelectStatement &stmt) const {
   if (stmt.is_count_star) {
     return executeCountStar(stmt.table_name);
   }
@@ -107,7 +107,7 @@ QueryResult Database::executeSelect(const SelectStatement &stmt) {
                            : executeSelectWithoutWhere(stmt);
 }
 
-QueryResult Database::executeCountStar(const std::string &table_name) {
+QueryResult Database::executeCountStar(const std::string &table_name) const {
   QueryResult results;
   Row count_row;
   count_row.push_back(
@@ -116,7 +116,7 @@ QueryResult Database::executeCountStar(const std::string &table_name) {
   return results;
 }
 
-QueryResult Database::executeSelectWithoutWhere(const SelectStatement &stmt) {
+QueryResult Database::executeSelectWithoutWhere(const SelectStatement &stmt) const {
   SchemaRecord schema = _table_manager.getTableSchema(stmt.table_name);
   uint32_t root_page = _table_manager.getTableRootPage(stmt.table_name);
   std::vector<int> column_positions =
@@ -127,7 +127,7 @@ QueryResult Database::executeSelectWithoutWhere(const SelectStatement &stmt) {
   return results;
 }
 
-QueryResult Database::executeSelectWithWhere(const SelectStatement &stmt) {
+QueryResult Database::executeSelectWithWhere(const SelectStatement &stmt) const {
   try {
     uint32_t index_root_page =
         _btree.getIndexRootPage(stmt.table_name, stmt.where_clause->column);

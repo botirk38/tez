@@ -2,17 +2,23 @@
 #include <bit>
 #include <cstdint>
 #include <cstring>
+#include <stdexcept>
 #include <vector>
 
 class ByteReader {
 public:
-  explicit ByteReader(std::vector<uint8_t> data)
+  explicit ByteReader(std::vector<uint8_t> data) noexcept
       : data_(std::move(data)), pos_(0) {}
-  ByteReader(const std::vector<uint8_t> &data, size_t offset)
+  ByteReader(const std::vector<uint8_t> &data, size_t offset) noexcept
       : data_(data), pos_(offset) {}
 
   // 8-bit reads
-  uint8_t readU8() { return data_[pos_++]; }
+  uint8_t readU8() {
+    if (pos_ >= data_.size()) [[unlikely]] {
+      throw std::runtime_error("Buffer underflow: attempting to read beyond end of data");
+    }
+    return data_[pos_++];
+  }
   int8_t readI8() { return static_cast<int8_t>(readU8()); }
 
   // 16-bit reads
@@ -161,16 +167,26 @@ public:
   }
 
   // Position management
-  void seek(size_t pos) { pos_ = pos; }
-  size_t position() const { return pos_; }
-  void skip(size_t bytes) { pos_ += bytes; }
-  bool eof() const { return pos_ >= data_.size(); }
-  size_t remaining() const { return data_.size() - pos_; }
+  void seek(size_t pos) {
+    if (pos > data_.size()) [[unlikely]] {
+      throw std::runtime_error("Seek position beyond buffer bounds");
+    }
+    pos_ = pos;
+  }
+  size_t position() const noexcept { return pos_; }
+  void skip(size_t bytes) {
+    if (pos_ + bytes > data_.size()) [[unlikely]] {
+      throw std::runtime_error("Skip would exceed buffer bounds");
+    }
+    pos_ += bytes;
+  }
+  bool eof() const noexcept { return pos_ >= data_.size(); }
+  size_t remaining() const noexcept { return data_.size() - pos_; }
 
   // Data access
-  const std::vector<uint8_t> &getData() const { return data_; }
-  const uint8_t *data() const { return data_.data(); }
-  size_t size() const { return data_.size(); }
+  const std::vector<uint8_t> &getData() const noexcept { return data_; }
+  const uint8_t *data() const noexcept { return data_.data(); }
+  size_t size() const noexcept { return data_.size(); }
 
 private:
   std::vector<uint8_t> data_;

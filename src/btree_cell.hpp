@@ -1,9 +1,9 @@
 #pragma once
-#include "btree_common.h"
-#include "byte_reader.h"
-#include "debug.h"
-#include "file_reader.h"
-#include "overflow_page.h"
+#include "btree_common.hpp"
+#include "byte_reader.hpp"
+#include "debug.hpp"
+#include "file_reader.hpp"
+#include "overflow_page.hpp"
 #include <cstdint>
 #include <type_traits>
 #include <variant>
@@ -34,7 +34,7 @@ public:
         row_id{};
   };
 
-  explicit BTreeCell(FileReader &reader, uint16_t page_size)
+  explicit BTreeCell(const FileReader &reader, uint16_t page_size)
       : reader_(reader), page_size_(page_size) {
     LOG_DEBUG("Created BTreeCell with page size: " << page_size);
   }
@@ -127,6 +127,6 @@ private:
     LOG_DEBUG("Complete payload size: " << payload.size());
     return payload;
   }
-  FileReader &reader_;
+  const FileReader &reader_;
   const uint16_t page_size_;
 };

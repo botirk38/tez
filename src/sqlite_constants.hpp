@@ -1,6 +1,6 @@
 #pragma once
 
-#include "btree_record.h"
+#include "btree_record.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <vector>

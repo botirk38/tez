@@ -1,13 +1,13 @@
-#include "table_manager.h"
-#include "btree_page.h"
-#include "btree_record.h"
-#include "debug.h"
-#include "sqlite_constants.h"
+#include "table_manager.hpp"
+#include "btree_page.hpp"
+#include "btree_record.hpp"
+#include "debug.hpp"
+#include "sqlite_constants.hpp"
 
 TableManager::TableManager(FileReader &reader, const sqlite::Header &header)
     : _reader(reader), _header(header) {}
 
-bool TableManager::isTableRecord(const std::vector<uint8_t> &payload) {
+bool TableManager::isTableRecord(const std::vector<uint8_t> &payload) const {
   LOG_DEBUG("Analyzing record payload of size " << payload.size());
   BTreeRecord record(payload);
   const auto &values = record.getValues();
@@ -27,13 +27,13 @@ bool TableManager::isTableRecord(const std::vector<uint8_t> &payload) {
   return type == "table";
 }
 
-bool TableManager::isUserTable(const SchemaRecord &record) {
+bool TableManager::isUserTable(const SchemaRecord &record) const {
   return record.getType() == "table" &&
          record.getName().compare(0, sqlite::internal::PREFIX_LENGTH,
                                   sqlite::internal::PREFIX) != 0;
 }
 
-uint32_t TableManager::getTableRootPage(const std::string &table_name) {
+uint32_t TableManager::getTableRootPage(const std::string &table_name) const {
   BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
                                              sqlite::SCHEMA_PAGE);
 
@@ -50,13 +50,13 @@ uint32_t TableManager::getTableRootPage(const std::string &table_name) {
   throw std::runtime_error("Table not found: " + table_name);
 }
 
-uint32_t TableManager::getTableRowCount(const std::string &table_name) {
+uint32_t TableManager::getTableRowCount(const std::string &table_name) const {
   uint32_t root_page = getTableRootPage(table_name);
   BTreePage<PageType::LeafTable> page(_reader, _header.page_size, root_page);
   return page.getHeader().cell_count;
 }
 
-SchemaRecord TableManager::getTableSchema(const std::string &table_name) {
+SchemaRecord TableManager::getTableSchema(const std::string &table_name) const {
   BTreePage<PageType::LeafTable> schema_page(_reader, _header.page_size,
                                              sqlite::SCHEMA_PAGE);
 

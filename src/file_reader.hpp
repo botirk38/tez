@@ -1,5 +1,5 @@
 #pragma once
-#include "sqlite_constants.h"
+#include "sqlite_constants.hpp"
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -20,26 +20,26 @@ public:
   }
 
   // Read methods for different integer types
-  [[nodiscard]] auto readU8() -> uint8_t {
+  [[nodiscard]] auto readU8() const -> uint8_t {
     uint8_t value;
     file_.read(reinterpret_cast<char *>(&value), sizeof(value));
     return value;
   }
 
-  [[nodiscard]] auto readU16() -> uint16_t {
+  [[nodiscard]] auto readU16() const -> uint16_t {
     uint16_t value;
     file_.read(reinterpret_cast<char *>(&value), sizeof(value));
     return toBigEndian(value);
   }
 
-  [[nodiscard]] auto readU32() -> uint32_t {
+  [[nodiscard]] auto readU32() const -> uint32_t {
     uint32_t value;
     file_.read(reinterpret_cast<char *>(&value), sizeof(value));
     return toBigEndian(value);
   }
 
   // Read variable-length integer
-  [[nodiscard]] auto readVarint() -> std::pair<int64_t, size_t> {
+  [[nodiscard]] auto readVarint() const -> std::pair<int64_t, size_t> {
     int64_t value = 0;
     size_t bytes_read = 0;
 
@@ -60,27 +60,27 @@ public:
   }
 
   // Read bytes into buffer
-  void readBytes(void *buffer, size_t length) {
+  void readBytes(void *buffer, size_t length) const {
     file_.read(reinterpret_cast<char *>(buffer), length);
   }
 
   // Read bytes at specific offset
-  void readBytes(void *buffer, size_t offset, size_t length) {
+  void readBytes(void *buffer, size_t offset, size_t length) const {
     seek(offset);
     readBytes(buffer, length);
   }
 
   // Read bytes into vector
-  [[nodiscard]] auto readBytes(size_t length) -> std::vector<uint8_t> {
+  [[nodiscard]] auto readBytes(size_t length) const -> std::vector<uint8_t> {
     std::vector<uint8_t> buffer(length);
     readBytes(buffer.data(), length);
     return buffer;
   }
 
   // Position management
-  void seek(size_t pos) { file_.seekg(pos); }
+  void seek(size_t pos) const { file_.seekg(pos); }
 
-  void seekRelative(std::streamoff offset) {
+  void seekRelative(std::streamoff offset) const {
     file_.seekg(offset, std::ios::cur);
   }
 
@@ -88,7 +88,7 @@ public:
     return static_cast<size_t>(file_.tellg());
   }
 
-  void seekToPage(uint32_t page_number, uint16_t page_size) {
+  void seekToPage(uint32_t page_number, uint16_t page_size) const {
     uint32_t page_offset = (page_number - 1) * page_size;
 
     if (page_number == 1) {
@@ -99,7 +99,7 @@ public:
   }
 
   [[nodiscard]] auto size() const -> size_t { return size_; }
-  [[nodiscard]] uint8_t peekU8() {
+  [[nodiscard]] uint8_t peekU8() const {
     auto current_pos = position();
     uint8_t value = readU8();
     seek(current_pos);

@@ -1,6 +1,6 @@
 #pragma once
-#include "btree_record.h"
-#include "sql_parser.h"
+#include "btree_record.hpp"
+#include "sql_parser.hpp"
 #include <string>
 #include <vector>
 

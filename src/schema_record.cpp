@@ -1,4 +1,4 @@
-#include "schema_record.h"
+#include "schema_record.hpp"
 
 SchemaRecord::SchemaRecord(const BTreeRecord &record) {
   const auto &values = record.getValues();
